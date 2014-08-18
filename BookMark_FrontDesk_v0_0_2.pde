@@ -12,6 +12,10 @@ import de.bezier.data.sql.*;
 import de.bezier.data.sql.mapper.*;
 import javax.swing.*;
 import processing.serial.*;
+import java.util.Calendar;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 ControlP5 cp5;
 Serial myPort;  // Create object from Serial class
@@ -21,6 +25,12 @@ String fullRFID;
 int i;
 PImage logo;
 
+boolean foundUser;
+String userName, userId;
+
+boolean foundCopy;
+String copyId, bookName;
+int bookId;
 void setup() {
   size(1100, 640);
   noStroke();
@@ -49,11 +59,10 @@ void setup() {
 
   msql = new MySQL( this, "localhost", database, user, pass );
 
-  //  if (msql.connect())
-  //  {
-  //    print("database connected");
-  //  }
-  // By default all controllers are stored inside Tab 'default' 
+  if (msql.connect()) {
+    print("database connected");
+  }
+  //By default all controllers are stored inside Tab 'default' 
 
   cp5.addTab("return")
     .setColorBackground(color(#2F86A0))
@@ -80,8 +89,8 @@ void setup() {
               .setHeight(60)
                 .setWidth(160)
                   .setId(1)
-                  .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER)
-                    ;
+                    .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER)
+                      ;
 
   cp5.getTab("return")
     .activateEvent(true)
@@ -89,8 +98,8 @@ void setup() {
         .setHeight(60)
           .setWidth(160)
             .setId(2)
-            .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER)
-              ;
+              .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER)
+                ;
 
   cp5.getTab("borrow")
     .activateEvent(true)
@@ -98,8 +107,8 @@ void setup() {
         .setHeight(60)
           .setWidth(160)
             .setId(3)
-            .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER)
-              ;
+              .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER)
+                ;
   // end of tabs
 
   // now the datafields
@@ -122,7 +131,12 @@ void setup() {
         .setLabel("clear")
           .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER)
             ;   
-
+  cp5.addButton("accept1")
+    .setPosition(260, 140)
+      .setSize(120, 40)
+        .setLabel("Accept")
+          .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER)
+            ; 
   cp5.addButton("manual_query")
     .setPosition(560, 140)
       .setSize(120, 40)
@@ -242,8 +256,20 @@ void setup() {
   cp5.getController("accept3").moveTo("borrow");
   cp5.getController("next3").moveTo("borrow");
 
+  foundUser=false;
+  userId=new String();
+  userId="";
+  userName=new String();
+  userName="";
 
+  foundCopy=false;
+  bookName=new String();
+  bookName="";
+  copyId=new String();
+  copyId="";
 
+  cp5.getTab("return").hide();
+  cp5.getTab("borrow").hide();
 
   background(color(250));
   image(logo, width-250, 0);
@@ -261,31 +287,47 @@ void setup() {
 
 void draw() {
 
-  if (cp5.window(this).currentTab().name()=="default")
-  {
-    if ( myPort.available() > 0) 
-    {  // If data is available,
-      val = myPort.readStringUntil('\n');
-      println(val);
-      fullRFID+=val;
-      i++;
-      if (i==4)
-      {
-        fullRFID=fullRFID.replace('\n', ' ');
+  if (cp5.window(this).currentTab().name()=="default") {
+    if ( myPort.available() > 0) {  // If data is available,
+      fullRFID = myPort.readStringUntil('\n');
+
+      if (fullRFID!=null) {
+
+        print(fullRFID);
+        fullRFID=fullRFID.trim();
+
         cp5.get(Textfield.class, "userid").setText(fullRFID);
         String sql="SELECT name, no_of_books_taken, due_fine FROM users WHERE user_rfid =  '%s' ; ";
-        println(sql);
+        //println(sql);
         msql.query( sql, fullRFID);
 
         if (msql.next())
         {
-          //println(msql.getString(1));
-          //          cp5.get(Textfield.class, "Name").setText(msql.getString(1));
-          fullRFID="";
-          fill(color(0));
+
+          foundUser=true;
+          userName=	msql.getString(1);
+          userId=fullRFID;
+          background(color(250));
+          image(logo, width-250, 0);
+
+          fill(color(40));
+          rect(0, 60, width, 160);
+
           text("Name : "+msql.getString(1)+"\n"+"Books Borrowed : "+msql.getInt(2)+"\n"+ "Fines Incurred : " + msql.getString(3), 120, 260);
-          i=0;
+
+          fill(color(0));
+          rect(0, height-120, width, 120);
+
+
+          fill(color(255));
+          text("Summary", 40, height-90);
+        } else
+        {
+          //background(color(0));
+          fill(color(0));
+          text("No users found with this id.", 120, 260);
         }
+        fullRFID="";
       }
     }
   } else if (cp5.window(this).currentTab().name()=="return")
@@ -293,58 +335,226 @@ void draw() {
     //image(books,40,200);
     if ( myPort.available() > 0) 
     {  // If data is available,
-      val = myPort.readStringUntil('\n');
-      println(val);
-      fullRFID+=val;
-      i++;
-      if (i==4)
+      fullRFID = myPort.readStringUntil('\n');
+
+      if (fullRFID!=null)
       {
-        fullRFID=fullRFID.replace('\n', ' ');
+        print(fullRFID);
+        fullRFID=fullRFID.trim();
         cp5.get(Textfield.class, "bookidreturn").setText(fullRFID);
-        String sql="SELECT b.title, a.name, p.name, b.total_copies, b.borrowed_copies FROM copies c, books b, written_by w, authors a, publishers p WHERE c.copy_rfid =  '%s' AND c.book_id = b.book_id AND b.book_id = w.book_id AND w.author_id = a.author_id AND b.publisher_id = p.publisher_id ;";
-        println(sql);
+        String sql="SELECT b.title, a.name, p.name, b.total_copies, b.borrowed_copies,c.book_id,c.copy_rfid FROM copies c, books b, written_by w, authors a, publishers p WHERE c.copy_rfid =  '%s' AND c.book_id = b.book_id AND b.book_id = w.book_id AND w.author_id = a.author_id AND b.publisher_id = p.publisher_id ;";
+        //println(sql);
         msql.query( sql, fullRFID);
+
         if (msql.next())
         {
-          println(msql.getString(1));
-          cp5.get(Textfield.class, "BookName").setText(msql.getString(1));
-          fullRFID="";
-          fill(color(0));
-          int height=220;
-          int width=200;
-          text("Book Title : "+msql.getString(1), width, height);
-          text("Author : "+msql.getString(2), width, height+40);
-          text("Publisher : "  + msql.getString(3), width, height+80);
-          text("Available Copies : " + (msql.getInt(4)-msql.getInt(5)), width, height+120);
+			
+			
+		  copyId=msql.getString(7);
+          bookId=msql.getInt(6);
+          bookName=msql.getString(1);
+          foundCopy=true;
+		  
+          background(color(250));
+          image(logo, width-250, 0);
 
-          //text("Book Title : "+msql.getString(1)+"\n"+"Author : "+msql.getString(2)+"\n"+  + "\n" +"Available Copies : " + (msql.getInt(4)-msql.getInt(5)),120,260);
-          i=0;
+          fill(color(40));
+          rect(0, 60, width, 160);
+
+          int mywidth=200;
+          int myheight=240;
+
+          text("Book Title : "+msql.getString(1), mywidth, myheight);
+          text("Author : "+msql.getString(2), mywidth, myheight+40);
+          text("Publisher : "  + msql.getString(3), mywidth, myheight+80);
+
+          fill(color(0));
+          rect(0, height-120, width, 120);
+
+
+          fill(color(255));
+          text("Summary", 40, height-90);
+        } else
+        {
+          //background(color(0));
+          background(color(250));
+          image(logo, width-250, 0);
+
+          fill(color(40));
+          rect(0, 60, width, 160);
+
+          text("No books with this Id.", 120, 260);
+
+
+          fill(color(0));
+          rect(0, height-120, width, 120);
+
+
+          fill(color(255));
+          text("Summary", 40, height-90);
         }
+        fullRFID="";
       }
     }
   } else
   {
-    //image(books,40,200);
+    if ( myPort.available() > 0) 
+    {  // If data is available,
+      fullRFID = myPort.readStringUntil('\n');
+
+      if (fullRFID!=null)
+      {
+        print(fullRFID);
+        fullRFID=fullRFID.trim();
+        cp5.get(Textfield.class, "bookidborrow").setText(fullRFID);
+        String sql="SELECT b.title, a.name, p.name, b.total_copies, b.borrowed_copies,c.book_id,c.copy_rfid FROM copies c, books b, written_by w, authors a, publishers p WHERE c.copy_rfid =  '%s' AND c.book_id = b.book_id AND b.book_id = w.book_id AND w.author_id = a.author_id AND b.publisher_id = p.publisher_id ;";
+        //println(sql);
+        msql.query( sql, fullRFID);
+
+        if (msql.next())
+        {
+
+
+          copyId=msql.getString(7);
+          bookId=msql.getInt(6);
+          bookName=msql.getString(1);
+          foundCopy=true;
+
+          background(color(250));
+          image(logo, width-250, 0);
+
+          fill(color(40));
+          rect(0, 60, width, 160);
+
+
+          int mywidth=200;
+          int myhight=240;
+
+          text("Book Title : "+msql.getString(1), mywidth, myhight);
+          text("Author : "+msql.getString(2), mywidth, myhight+40);
+          text("Publisher : "  + msql.getString(3), mywidth, myhight+80);
+          text("Available Copies : " + (msql.getInt(4)-msql.getInt(5)), mywidth, myhight+120);
+
+          fill(color(0));
+          rect(0, height-120, width, 120);
+
+
+          fill(color(255));
+          text("Summary", 40, height-90);
+        } else
+        {
+          //background(color(0));
+          background(color(250));
+          image(logo, width-250, 0);
+
+          fill(color(40));
+          rect(0, 60, width, 160);
+
+          text("No books with this Id.", 120, 260);
+
+          fill(color(0));
+          rect(0, height-120, width, 120);
+
+
+          fill(color(255));
+          text("Summary", 40, height-90);
+        }
+        fullRFID="";
+      }
+    }
   }
 }
 
 void controlEvent(ControlEvent theControlEvent) {
-  background(color(250));
-  image(logo, width-250, 0);
 
-  fill(color(40));
-  rect(0, 60, width, 160);
+  //println("Control Event");
+  if (theControlEvent.isTab())
+  {
+    println("Tab selected");
+    background(color(250));
+    image(logo, width-250, 0);
 
-  fill(color(0));
-  rect(0, height-120, width, 120);
+    fill(color(40));
+    rect(0, 60, width, 160);
+
+    fill(color(0));
+    rect(0, height-120, width, 120);
 
 
-  fill(color(255));
-  text("Summary", 40, height-90);
+    fill(color(255));
+    text("Summary", 40, height-90);
+  } else
+  {
+    println("others Selected");
+  }
 }
 
 
 public void manual_query() {
+
+
+  String manualRFID = cp5.get(Textfield.class, "userid").getText();
+  String sql="SELECT name, no_of_books_taken, due_fine FROM users WHERE user_rfid =  '%s' ; ";
+
+  msql.query( sql, manualRFID);
+
+  if (msql.next())
+  {
+    println("true");
+
+    foundUser=true;
+    userName=msql.getString(1);
+    userId=manualRFID;
+    background(color(250));
+    image(logo, width-250, 0);
+
+    fill(color(40));
+    rect(0, 60, width, 160);
+
+    text("Name : "+msql.getString(1)+"\n"+"Books Borrowed : "+msql.getInt(2)+"\n"+ "Fines Incurred : " + msql.getString(3), 120, 260);
+
+    fill(color(0));
+    rect(0, height-120, width, 120);
+
+    fill(color(255));
+    text("Summary", 40, height-90);
+  }
+}
+
+public void manual_query2() {
+
+
+  String manualRFID = cp5.get(Textfield.class, "bookidreturn").getText();
+  String sql="SELECT b.title, a.name, p.name, b.total_copies, b.borrowed_copies FROM copies c, books b, written_by w, authors a, publishers p WHERE c.copy_rfid =  '%s' AND c.book_id = b.book_id AND b.book_id = w.book_id AND w.author_id = a.author_id AND b.publisher_id = p.publisher_id ;";
+  println(sql);
+  println(manualRFID);
+  msql.query( sql, manualRFID);
+
+  if (msql.next())
+  {
+    println("true");
+
+    background(color(250));
+    image(logo, width-250, 0);
+
+    fill(color(40));
+    rect(0, 60, width, 160);
+
+    text("Book Title : "+msql.getString(1), 200, 240);
+    text("Author : "+msql.getString(2), 200, 240+40);
+    text("Publisher : "  + msql.getString(3), 200, 240+80);
+    text("Available Copies : " + (msql.getInt(4)-msql.getInt(5)), 200, 240+120);
+
+    fill(color(0));
+    rect(0, height-120, width, 120);
+
+    fill(color(255));
+    text("Summary", 40, height-90);
+  }
+}
+
+
+public void manual_query3() {
   background(color(250));
   image(logo, width-250, 0);
 
@@ -354,52 +564,172 @@ public void manual_query() {
   fill(color(0));
   rect(0, height-120, width, 120);
 
-
   fill(color(255));
   text("Summary", 40, height-90);
 
+  String manualRFID = cp5.get(Textfield.class, "bookidborrow").getText();
+  String sql="SELECT name, no_of_books_taken, due_fine FROM users WHERE user_rfid =  '%s' ; ";
+  println(sql);
+  println(manualRFID);
+  msql.query( sql, manualRFID);
+
+  if (msql.next())
+  {
+    println("true");
+
+
+    background(color(250));
+    image(logo, width-250, 0);
+
+    fill(color(40));
+    rect(0, 60, width, 160);
+
+    text("Book Title : "+msql.getString(1), 200, 240);
+    text("Author : "+msql.getString(2), 200, 240+40);
+    text("Publisher : "  + msql.getString(3), 200, 240+80);
+    text("Available Copies : " + (msql.getInt(4)-msql.getInt(5)), 200, 240+120);
+
+    fill(color(0));
+    rect(0, height-120, width, 120);
+
+    fill(color(255));
+    text("Summary", 40, height-90);
+  }
+}
+
+public void accept1() {
+
+  if (!foundUser)myCustomControlEvent("No User Found With This ID.");
+
+  if (foundUser)
+  {
+    myCustomControlEvent("Working with user:"+userName);
+    cp5.getTab("return").show();
+    cp5.getTab("borrow").show();
+    cp5.getTab("return").bringToFront();
+  }
 }
 
 public void accept2() {
-  background(color(250));
-  image(logo, width-250, 0);
+	
+	Calendar calendar= Calendar.getInstance();
+	Date returningDate= calendar.getTime();
+	SimpleDateFormat format= new SimpleDateFormat("yyyy-MM-dd");
+	String sql="SELECT entry_id, to_return_date FROM borrowed_by WHERE entry_id = (  SELECT MAX( entry_id )  FROM borrowed_by WHERE user_id =  '%s' AND copy_id =  '%s' ) ; ";
+	msql.query(sql,userId,copyId);
 
-  fill(color(40));
-  rect(0, 60, width, 160);
+	if(msql.next())
+	{
+		long maxEntry=0;
+		
+		maxEntry=msql.getLong(1);
+		String toReturnDateString=msql.getString(2);
+		sql="UPDATE borrowed_by SET returned_date='%s' where user_id='%s' AND copy_id='%s' and entry_id=%d ; ";
+		msql.query(sql,format.format(returningDate),userId,copyId,maxEntry);
+                //cp5.getTab("borrow").bringToFront();
+                //println(toReturnDateString);
+                Date toReturnDate=new Date();		
+                try{
+                    toReturnDate=format.parse(toReturnDateString);
+                }
+                catch(Exception e)
+                {
+                    return;
+                }
+		
+		if(toReturnDate.compareTo(returningDate)<0)
+		{
+			long diff = returningDate.getTime() - toReturnDate.getTime();
+			long diffDays = diff / (24 * 60 * 60 * 1000);
+println(diffDays);
+			sql="SELECT due_fine FROM users where user_rfid='%s';";
+			msql.query(sql,userId);
+                        long curdue=0;			
+                        if(msql.next())curdue=msql.getLong(1);
+                        println(curdue);
+			sql="UPDATE users SET due_fine='%d' where user_rfid='%s' ;";
+			msql.query(sql,curdue+diffDays*5,userId);
+		}
+		
+		myCustomControlEvent(userName+" has returned " + bookName);
+	}
+	else
+	{
+		myCustomControlEvent(userName+" has not borrowed any book named" + bookName);
+	}
 
-  fill(color(0));
-  rect(0, height-120, width, 120);
+}
 
 
-  fill(color(255));
-  text("Summary", 40, height-90);
-  cp5.getTab("borrow").bringToFront();
+public void accept3() {
+
+  //text -> lend this copy of omuk to tomuk
+  myCustomControlEvent("Has Lent a Copy of "+bookName+" to "+ userName);
+  //insert date , date+7 ...
+
+  Calendar calendar= Calendar.getInstance();
+  Date issueDate= calendar.getTime();
+  calendar.add(Calendar.DATE, 7);
+  Date toReturnDate=calendar.getTime();
+
+  SimpleDateFormat format= new SimpleDateFormat("yyyy-MM-dd");
+  println(format.format(issueDate));
+  println(format.format(toReturnDate));
+  String sql="INSERT INTO borrowed_by( user_id ,  copy_id , book_id,  issue_date ,  to_return_date ) VALUES ( '%s', '%s', %d,  '%s',  '%s') ";
+  msql.query(sql, userId, copyId, bookId, format.format(issueDate), format.format(toReturnDate));
+
+  //cp5.getTab("borrow").bringToFront();
 }
 
 
 
 public void clear1() {
-  cp5.get(Textfield.class, "userid").clear();
+  cp5.get(Textfield.class, "userid").setText("");
+  myCustomControlEvent("");
   // also clear the variable hloding the user rfid here
 }
+
 public void clear2() {
-  cp5.get(Textfield.class, "bookidreturn").clear();
+  cp5.get(Textfield.class, "bookidreturn").setText("");
+  myCustomControlEvent("");
 }
+
 public void clear3() {
-  cp5.get(Textfield.class, "bookidborrow").clear();
+  cp5.get(Textfield.class, "bookidborrow").setText("");
+  myCustomControlEvent("");
 }
 
 public void next1() {
   cp5.getTab("return").bringToFront();
+  myCustomControlEvent("");
 }
+
 public void next2() {
   cp5.getTab("borrow").bringToFront();
+  myCustomControlEvent("");
 }
+
 public void next3() {
   cp5.getTab("default").bringToFront();
+  myCustomControlEvent("");
 }
 
+void myCustomControlEvent(String s) {
+  background(color(250));
+  image(logo, width-250, 0);
 
+  fill(color(40));
+  rect(0, 60, width, 160);
+
+  text(s, 120, 260);
+
+  fill(color(0));
+  rect(0, height-120, width, 120);
+
+
+  fill(color(255));
+  text("Summary", 40, height-90);
+}
 
 
 void keyPressed() {
@@ -503,4 +833,3 @@ a list of all methods available for the Tab Controller
  
  
  */
-
